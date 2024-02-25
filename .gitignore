@@ -1,0 +1,4 @@
+.cache
+__pycache__
+spot_pricing.egg-info
+**/results/*.xlsx

@@ -1,0 +1,45 @@
+[project]
+name = "spot-pricing"
+version = "0.1"
+requires-python = "~=3.12"
+
+[tool.pytest.ini_options]
+cache_dir = ".cache/pytest"
+addopts = [
+    "--import-mode=importlib"
+]
+
+[tool.pyright]
+strict = ["src", "tests"]
+
+[tool.ruff]
+include = ["pyproject.toml", "src/**.py", "tests/**.py"]
+cache-dir = ".cache/ruff"
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "F",    # Pyflakes
+    "E",    # Pycodestyle
+    "I",    # Imports
+    "N",    # Naming
+    "UP",   # Upgrade
+    "B",    # Bugbear
+    "PT",   # Pytest
+    "SIM",  # Simplify
+    "PERF", # Performance
+    "ANN",  # Annotations
+]
+ignore = [
+    "ANN101", # Missing type annotation for self
+    "ANN102", # Missing type annotation for cls
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = [
+    "E402", # Ignore import violations
+    "F401", # Ignore unused imports
+    "F403", # Ignore wildcard imports
+]
+"**_test.py" = ["ANN201"] # No need for return types for all tests
