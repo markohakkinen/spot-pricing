@@ -1,3 +1,4 @@
+/build/dist/spot-pricing.exe
 .cache
 __pycache__
 spot_pricing.egg-info

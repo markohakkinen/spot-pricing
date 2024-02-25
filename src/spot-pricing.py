@@ -46,7 +46,7 @@ class ZaptecSpotPricing:
             data = DayAheadPrices().fetch(start, end)
             with open(entsoe_cache_file, "w", encoding="utf-8") as stream:
                 stream.write(data)
-        with open(entsoe_cache_file) as stream:
+        with open(entsoe_cache_file, encoding="utf-8") as stream:
             return DayAheadPricesParser().parse(stream.read())
 
     def _fetch_zaptec_data(self) -> dict[str, UserChargeHistory]:
@@ -60,7 +60,7 @@ class ZaptecSpotPricing:
             data = ChargeHistory().fetch(start, end)
             with open(zaptec_cache_file, "w", encoding="utf-8") as stream:
                 stream.write(data)
-        with open(zaptec_cache_file) as stream:
+        with open(zaptec_cache_file, encoding="utf-8") as stream:
             return ChargeHistoryParser().parse(stream.read())
 
     def _get_cache_folder(self) -> Path:
