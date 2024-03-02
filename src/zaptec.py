@@ -24,20 +24,34 @@ class ChargeHistory:
                 "or ZAPTEC_APIKEY."
             )
 
-    def fetch(self, start: datetime, end: datetime) -> str:
+    def fetch(self, installation_id: str, start: datetime, end: datetime) -> str:
         with self._create_session() as session:
-            first_page = self._fetch_page(session, 0, start, end)
+            first_page = self._fetch_page(session, 0, installation_id, start, end)
             data = first_page["Data"]
             pages = first_page["Pages"]
             for page in range(1, pages):
-                current_page = self._fetch_page(session, page, start, end)
+                current_page = self._fetch_page(
+                    session, page, installation_id, start, end
+                )
                 data.extend(current_page["Data"])
             return dumps({"Data": data}, ensure_ascii=False)
 
+    def available_installation_ids(self) -> list[str]:
+        with self._create_session() as session:
+            installations_json = self._fetch_installations(session)
+            data = installations_json["Data"]
+            return [item["Id"] for item in data]
+
     def _fetch_page(
-        self, session: Session, page: int, start: datetime, end: datetime
+        self,
+        session: Session,
+        page: int,
+        installation_id: str,
+        start: datetime,
+        end: datetime,
     ) -> Any:  # noqa: ANN401
         params = {
+            "InstallationId": installation_id,
             "From": start.isoformat(),
             "To": end.isoformat(),
             "DetailLevel": "1",
@@ -49,6 +63,15 @@ class ChargeHistory:
             "https://api.zaptec.com/api/chargehistory",
             params=params,
             headers=headers,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def _fetch_installations(self, session: Session) -> Any:  # noqa: ANN401
+        params = {"ReturnIdNameOnly": True}
+        headers = {"Accept": "text/plain"}
+        r = session.get(
+            "https://api.zaptec.com/api/installation", params=params, headers=headers
         )
         r.raise_for_status()
         return r.json()
@@ -101,8 +124,14 @@ class ChargeHistoryParser:
     def parse(self, data: str) -> dict[str, UserChargeHistory]:
         result = {}
         parsed = loads(data)
-        data = parsed["Data"]
-        for item in data:
+        data_item = parsed["Data"]
+        for item in data_item:
+            if "UserUserName" not in item:
+                if float(item["Energy"]) > 0:
+                    raise RuntimeError(
+                        f"Found charging session {item['Id']} without user identification!"
+                    )
+                continue
             user_name = item["UserUserName"]  # type:ignore
             history = result.get(  # type:ignore
                 user_name,

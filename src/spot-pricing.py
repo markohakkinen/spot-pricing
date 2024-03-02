@@ -57,7 +57,23 @@ class ZaptecSpotPricing:
         )
         if self.args.ignore_cache or not zaptec_cache_file.exists():
             (start, end) = self._get_fetch_start_end_times()
-            data = ChargeHistory().fetch(start, end)
+            charge_history = ChargeHistory()
+            if self.args.zaptec_installation_id:
+                installation_id = self.args.zaptec_installation_id
+            else:
+                available_ids = charge_history.available_installation_ids()
+                if len(available_ids) == 0:
+                    raise RuntimeError(
+                        "No available installations with the given Zaptec credentials!"
+                    )
+                if len(available_ids) > 1:
+                    raise RuntimeError(
+                        "Given Zaptec credentials have access to multiple "
+                        "installations. Use --zaptec-installation-id argument "
+                        "to indicate which one to use!"
+                    )
+                installation_id = available_ids[0]
+            data = ChargeHistory().fetch(installation_id, start, end)
             with open(zaptec_cache_file, "w", encoding="utf-8") as stream:
                 stream.write(data)
         with open(zaptec_cache_file) as stream:
@@ -82,6 +98,7 @@ def _main() -> None:
     parser = ArgumentParser()
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--month", type=int, required=True)
+    parser.add_argument("--zaptec-installation-id")
     parser.add_argument("--timezone", default="Europe/Helsinki")
     parser.add_argument("--ignore-cache", action="store_true")
     parser.add_argument("--debug", action="store_true")
