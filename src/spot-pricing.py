@@ -8,6 +8,7 @@ from pathlib import Path
 from dateutil import relativedelta
 from entsoe import DayAheadPrices, DayAheadPricesParser
 from excel import ZaptecInvoice
+from yaml import safe_load
 from zaptec import ChargeHistory, ChargeHistoryParser, UserChargeHistory
 
 
@@ -22,6 +23,7 @@ class ZaptecSpotPricing:
         self.args = args
 
     def create_invoice(self) -> None:
+        contract = self._fetch_contract()
         day_ahead_prices = self._fetch_entsoe_data()
         user_charge_histories = self._fetch_zaptec_data()
         results_folder = Path(getcwd()) / "results"
@@ -31,9 +33,18 @@ class ZaptecSpotPricing:
             self.args.year,
             self.args.month,
             self.args.timezone,
+            contract,
             day_ahead_prices,
             user_charge_histories,
         )
+
+    def _fetch_contract(self) -> dict[str, float]:
+        path = Path(self.args.contract)
+        if not path.exists():
+            raise RuntimeError(f"Contract file not found: {self.args.contract}")
+        with open(path) as stream:
+            content = safe_load(stream)
+            return content["contract"]
 
     def _fetch_entsoe_data(self) -> dict[datetime, float]:
         entsoe_cache_folder = self._get_cache_folder() / "entsoe"
@@ -98,6 +109,7 @@ def _main() -> None:
     parser = ArgumentParser()
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--month", type=int, required=True)
+    parser.add_argument("--contract", default="contract.yaml")
     parser.add_argument("--zaptec-installation-id")
     parser.add_argument("--timezone", default="Europe/Helsinki")
     parser.add_argument("--ignore-cache", action="store_true")

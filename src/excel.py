@@ -18,15 +18,16 @@ class ZaptecInvoice:
         year: int,
         month: int,
         zone: str,
+        contract: dict[str, float],
         day_ahead_prices: dict[datetime, float],
         user_charge_histories: dict[str, UserChargeHistory],
     ) -> None:
         (start, end) = self._get_start_end_times(year, month, zone)
         wb = Workbook()
         wb.iso_dates = True
-        self._fill_invoising(wb, user_charge_histories)
-        self._fill_contract_info(wb)
-        self._fill_spot_price(wb, start, end, zone, day_ahead_prices)
+        self._fill_invoising(wb, contract, user_charge_histories)
+        self._fill_contract_info(wb, contract)
+        self._fill_spot_price(wb, start, end, zone, contract, day_ahead_prices)
         self._fill_charge_histories(wb, start, end, zone, user_charge_histories)
         wb.remove_sheet(wb.get_sheet_by_name("Sheet"))
         wb.save(filename)  # type:ignore
@@ -40,7 +41,10 @@ class ZaptecInvoice:
         return (tz.localize(start), tz.localize(end))
 
     def _fill_invoising(
-        self, wb: Workbook, user_charge_histories: dict[str, UserChargeHistory]
+        self,
+        wb: Workbook,
+        contract: dict[str, float],
+        user_charge_histories: dict[str, UserChargeHistory],
     ) -> None:
         invoising = wb.create_sheet("Laskutus")
         invoising.column_dimensions["A"].width = 20
@@ -57,14 +61,15 @@ class ZaptecInvoice:
                 "Tili",
                 "Käyttäjä",
                 "Kulutus kWh",
-                "Hinta € ALV 24%",
+                f"Hinta € ALV {contract['value_added_tax_percentage']}%",
                 "Hinta € ALV 0%",
-                "Hinta c/kWh ALV 24%",
+                f"Hinta c/kWh ALV {contract['value_added_tax_percentage']}%",
                 "Hinta c/kWh ALV 0%",
-                "Spot hinta c/kWh ALV 24%",
+                f"Spot hinta c/kWh ALV {contract['value_added_tax_percentage']}%",
                 "Spot hinta c/kWh ALV 0%",
             ]
         )
+        vat_factor = 1 + contract["value_added_tax_percentage"] / 100
         last_row = 0
         for i, (user, charge_history) in enumerate(user_charge_histories.items()):
             invoising.append(
@@ -72,12 +77,12 @@ class ZaptecInvoice:
                     user,
                     charge_history.full_name,
                     f"=SUM('{user}'!B:B)",
+                    f"=E{i+2}*{vat_factor}",
                     f"=SUM('{user}'!F:F)",
-                    f"=D{i+2}/1.24",
                     f"=D{i+2}/C{i+2}*100",
                     f"=E{i+2}/C{i+2}*100",
                     f"=F{i+2}-'Sähkösopimus'!B5",
-                    f"=G{i+2}-'Sähkösopimus'!B5/1.24",
+                    f"=G{i+2}-'Sähkösopimus'!C5",
                 ]
             )
             last_row = i
@@ -91,7 +96,7 @@ class ZaptecInvoice:
                 f"=D{last_row+3}/C{last_row+3}*100",
                 f"=E{last_row+3}/C{last_row+3}*100",
                 f"=F{last_row+3}-'Sähkösopimus'!B5",
-                f"=G{last_row+3}-'Sähkösopimus'!B5/1.24",
+                f"=G{last_row+3}-'Sähkösopimus'!C5",
             ]
         )
         for i in range(2, last_row + 4):
@@ -102,15 +107,33 @@ class ZaptecInvoice:
             invoising[f"H{i}"].number_format = "0.00"
             invoising[f"I{i}"].number_format = "0.00"
 
-    def _fill_contract_info(self, wb: Workbook) -> None:
+    def _fill_contract_info(
+        self,
+        wb: Workbook,
+        contract: dict[str, float],
+    ) -> None:
+        vat_factor = 1 + contract["value_added_tax_percentage"] / 100
         contract_info: Worksheet = wb.create_sheet("Sähkösopimus")
         contract_info.column_dimensions["A"].width = 20
         contract_info.column_dimensions["B"].width = 20
-        contract_info.append(["", "c/kWh ALV 24%"])
-        contract_info.append(["Sähkönsiirto", 3.09])
-        contract_info.append(["Vero", 2.79372])
-        contract_info.append(["Välityspalkkio", 0.496])
-        contract_info.append(["Kiinteä tuntihinta", "=SUM(B2:B4)"])
+        contract_info.column_dimensions["C"].width = 20
+        contract_info.append(
+            ["", f"c/kWh ALV {contract['value_added_tax_percentage']}%", "c/kWh ALV 0%"]
+        )
+        contract_info.append(
+            [
+                "Sähkönsiirto",
+                contract["transfer_price_with_vat_c_kwh"],
+                f"=B2/{vat_factor}",
+            ]
+        )
+        contract_info.append(
+            ["Vero", contract["electricity_tax_with_vat_c_kwh"], f"=B3/{vat_factor}"]
+        )
+        contract_info.append(
+            ["Välityspalkkio", contract["margin_with_vat_c_kwh"], f"=B4/{vat_factor}"]
+        )
+        contract_info.append(["Kiinteä tuntihinta", "=SUM(B2:B4)", "=SUM(C2:C4)"])
 
     def _fill_charge_histories(
         self,
@@ -144,10 +167,10 @@ class ZaptecInvoice:
             [
                 "Aika (UTC)",
                 "Kulutus kWh",
-                "Spot hinta c/kWh ALV 24%",
-                "Spot hinta € ALV 24%",
-                "Kiinteä hinta € ALV 24%",
-                "Hinta € ALV 24%",
+                "Spot hinta c/kWh ALV 0%",
+                "Spot hinta € ALV 0%",
+                "Kiinteä hinta € ALV 0%",
+                "Hinta € ALV 0%",
             ]
         )
         sorted_consumption = dict(sorted(charge_history.consumption.items()))
@@ -159,9 +182,9 @@ class ZaptecInvoice:
                     [
                         time,
                         value,
-                        f"=VLOOKUP(A{row},'Spot-hinta'!A:D,4,TRUE)",
+                        f"=VLOOKUP(A{row},'Spot-hinta'!A:C,3,TRUE)",
                         f"=B{row}*C{row}/100",
-                        f"='Sähkösopimus'!$B$5*B{row}/100",
+                        f"='Sähkösopimus'!$C$5*B{row}/100",
                         f"=D{row}+E{row}",
                     ]
                 )
@@ -173,21 +196,28 @@ class ZaptecInvoice:
         start: datetime,
         end: datetime,
         zone: str,
+        contract: dict[str, float],
         day_ahead_prices: dict[datetime, float],
     ) -> None:
+        vat_factor = 1 + contract["value_added_tax_percentage"] / 100
         spot_price_sheet: Worksheet = wb.create_sheet("Spot-hinta")
         spot_price_sheet.column_dimensions["A"].width = 20
         spot_price_sheet.column_dimensions["B"].width = 16
         spot_price_sheet.column_dimensions["C"].width = 16
         spot_price_sheet.column_dimensions["D"].width = 16
         spot_price_sheet.append(
-            [f"Aika ({zone})", "€/MWh (ALV 0%)", "c/kWh (ALV 0%)", "c/kWh (ALV 24%)"]
+            [
+                f"Aika ({zone})",
+                "€/MWh (ALV 0%)",
+                "c/kWh (ALV 0%)",
+                f"c/kWh (ALV {contract['value_added_tax_percentage']}%)",
+            ]
         )
         row = 2
         for key, value in day_ahead_prices.items():
             if (key >= start) and (key < end):
                 time = key.astimezone(timezone(zone)).replace(tzinfo=None)
                 spot_price_sheet.append(
-                    [time, value, f"=B{row}/1000*100", f"=C{row}*1.24"]
+                    [time, value, f"=B{row}/1000*100", f"=C{row}*{vat_factor}"]
                 )
                 row += 1
