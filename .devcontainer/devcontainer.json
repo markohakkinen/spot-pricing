@@ -40,6 +40,7 @@
     "ZAPTEC_USERNAME": "${localEnv:ZAPTEC_USERNAME}",
     "ZAPTEC_PASSWORD": "${localEnv:ZAPTEC_PASSWORD}",
     "ZAPTEC_APIKEY": "${localEnv:ZAPTEC_APIKEY}",
-    "ENTSOE_API_TOKEN": "${localEnv:ENTSOE_API_TOKEN}"
+    "ENTSOE_API_TOKEN": "${localEnv:ENTSOE_API_TOKEN}",
+    "SMTP_PASSWORD": "${localEnv:SMTP_PASSWORD}"
   }
 }

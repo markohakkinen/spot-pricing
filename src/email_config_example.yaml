@@ -1,0 +1,16 @@
+email:
+  subject: "Sähköautojen lataus {year}/{month}"
+  message: "Sähköautojen latauksen laskutustiedot ohessa."
+  from:
+    display_name: John Doe
+    address: john.doe@example.com
+  to:
+    - display_name: John Doe
+      address: john.doe@example.com
+  cc:
+  bcc:
+smtp_starttls:
+  host: smtp.example.com
+  port: 587
+  user: john.doe@example.com
+  password_env_variable: SMTP_PASSWORD

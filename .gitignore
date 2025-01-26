@@ -3,3 +3,4 @@
 __pycache__
 spot_pricing.egg-info
 **/results/*.xlsx
+src/email_config.yaml
