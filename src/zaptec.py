@@ -1,8 +1,8 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from json import dumps, loads
 from os import getenv
-from typing import Any
+from typing import Any, cast
 
 from requests import Session, post
 
@@ -108,6 +108,21 @@ def time_floor(time: datetime, floor_to_seconds: int = 15 * 60) -> datetime:
     return time + timedelta(seconds=rounding - seconds, microseconds=-time.microsecond)
 
 
+def fallback_utc(time: datetime) -> datetime:
+    if time.tzinfo is not None:
+        return time
+    return datetime(
+        time.year,
+        time.month,
+        time.day,
+        time.hour,
+        time.minute,
+        time.second,
+        time.microsecond,
+        timezone.utc,
+    )
+
+
 @dataclass
 class UserChargeHistory:
     user_name: str
@@ -126,33 +141,92 @@ class ChargeHistoryParser:
         parsed = loads(data)
         data_item = parsed["Data"]
         for item in data_item:
+            id = item["Id"] if "Id" in item else "<unknown-id>"
             if "UserUserName" not in item:
                 if float(item["Energy"]) > 0:
                     raise RuntimeError(
-                        f"Found charging session {item['Id']} without user identification!"
+                        f"Found charging session {id} without user identification!"
                     )
                 continue
-            user_name = item["UserUserName"]  # type:ignore
-            history = result.get(  # type:ignore
-                user_name,
-                UserChargeHistory(user_name, item["UserFullName"], {}),  # type:ignore
-            )
-            session_energy = float(item["Energy"])  # type:ignore
-            detail_energy_total = 0.0
-            energy_details = item["EnergyDetails"]  # type:ignore
-            for i, energy_detail in enumerate(energy_details):
-                timestamp = datetime.fromisoformat(energy_detail["Timestamp"])  # type:ignore
-                energy = float(energy_detail["Energy"])  # type:ignore
-                if energy > 0:
-                    consumption_start = (
-                        time_floor(timestamp)
-                        if i == len(energy_details) - 1
-                        else time_floor(timestamp) - timedelta(minutes=15)
+            try:
+                user_name = item["UserUserName"]  # type:ignore
+                history = result.get(  # type:ignore
+                    user_name,
+                    UserChargeHistory(user_name, item["UserFullName"], {}),  # type:ignore
+                )
+                session_energy = float(item["Energy"])  # type:ignore
+                if "EnergyDetails" in item:
+                    energy_details = item["EnergyDetails"]  # type:ignore
+                    self._update_history_with_energy_details(
+                        cast(UserChargeHistory, history),
+                        energy_details,
+                        session_energy,
                     )
-                    if consumption_start in history.consumption:  # type:ignore
-                        raise RuntimeError
-                    history.consumption[consumption_start] = energy  # type:ignore
-                    detail_energy_total += energy
-            assert abs(session_energy - detail_energy_total) < 0.0001
-            result[user_name] = history  # type:ignore
+                else:
+                    print(
+                        f"WARNING: EnergyDetails not found for {id}. "
+                        "Zaptec has not recorded details, using fallback."
+                    )
+                    self._update_history_with_session_energy(
+                        cast(UserChargeHistory, history),
+                        session_energy,
+                        fallback_utc(datetime.fromisoformat(item["StartDateTime"])),
+                        fallback_utc(datetime.fromisoformat(item["EndDateTime"])),
+                    )
+                result[user_name] = history  # type:ignore
+            except KeyError as ex:
+                raise Exception(f"Error with id {id}") from ex
         return dict(sorted(result.items()))  # type:ignore
+
+    def _update_history_with_energy_details(
+        self,
+        history: UserChargeHistory,
+        energy_details: Any,  # noqa: ANN401
+        session_energy: float,
+    ) -> None:
+        detail_energy_total = 0.0
+        for i, energy_detail in enumerate(energy_details):
+            timestamp = datetime.fromisoformat(energy_detail["Timestamp"])  # type:ignore
+            energy = float(energy_detail["Energy"])  # type:ignore
+            if energy > 0:
+                consumption_start = (
+                    time_floor(timestamp)
+                    if i == len(energy_details) - 1
+                    else time_floor(timestamp) - timedelta(minutes=15)
+                )
+                if consumption_start in history.consumption:  # type:ignore
+                    raise RuntimeError
+                history.consumption[consumption_start] = energy  # type:ignore
+                detail_energy_total += energy
+        assert abs(session_energy - detail_energy_total) < 0.0001
+
+    def _update_history_with_session_energy(
+        self,
+        history: UserChargeHistory,
+        session_energy: float,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> None:
+        detail_energy_total = 0.0
+        charge_duration = end_time - start_time
+        time = time_floor(start_time)
+        while time < end_time:
+            duration = self._duration(time, start_time, end_time)
+            ratio = duration / charge_duration
+            energy = ratio * session_energy
+            history.consumption[time] = energy
+            time += timedelta(minutes=15)
+            detail_energy_total += energy
+        assert abs(session_energy - detail_energy_total) < 0.0001
+
+    @staticmethod
+    def _duration(
+        time: datetime, start_time: datetime, end_time: datetime
+    ) -> timedelta:
+        start = time if time > start_time else start_time
+        end = (
+            time + timedelta(minutes=15)
+            if time + timedelta(minutes=15) < end_time
+            else end_time
+        )
+        return end - start
