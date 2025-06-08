@@ -76,9 +76,9 @@ class ZaptecInvoice:
                 [
                     user,
                     charge_history.full_name,
-                    f"=SUM('{user}'!B:B)",
+                    f"=SUM('{self._limit_sheet_name(user)}'!B:B)",
                     f"=E{i+2}*{vat_factor}",
-                    f"=SUM('{user}'!F:F)",
+                    f"=SUM('{self._limit_sheet_name(user)}'!F:F)",
                     f"=D{i+2}/C{i+2}*100",
                     f"=E{i+2}/C{i+2}*100",
                     f"=F{i+2}-'Sähkösopimus'!B5",
@@ -144,7 +144,9 @@ class ZaptecInvoice:
         user_charge_histories: dict[str, UserChargeHistory],
     ) -> None:
         for user, charge_history in user_charge_histories.items():
-            user_consumption_sheet: Worksheet = wb.create_sheet(user)
+            user_consumption_sheet: Worksheet = wb.create_sheet(
+                self._limit_sheet_name(user)
+            )
             self._fill_user_consumption_sheet(
                 user_consumption_sheet, start, end, zone, charge_history
             )
@@ -221,3 +223,7 @@ class ZaptecInvoice:
                     [time, value, f"=B{row}/1000*100", f"=C{row}*{vat_factor}"]
                 )
                 row += 1
+
+    @staticmethod
+    def _limit_sheet_name(name: str) -> str:
+        return name[:30]
