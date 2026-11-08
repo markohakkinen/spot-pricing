@@ -171,7 +171,10 @@ class ChargeHistoryParser:
                         cast(UserChargeHistory, history),
                         session_energy,
                         fallback_utc(datetime.fromisoformat(item["StartDateTime"])),
-                        fallback_utc(datetime.fromisoformat(item["EndDateTime"])),
+                        fallback_utc(
+                            datetime.fromisoformat(item["EndDateTime"])
+                            + timedelta(seconds=1)
+                        ),
                     )
                 result[user_name] = history  # type:ignore
             except KeyError as ex:
