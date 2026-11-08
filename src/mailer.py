@@ -2,6 +2,7 @@ import smtplib
 from datetime import datetime
 from email.headerregistry import Address
 from email.message import EmailMessage
+from email.utils import format_datetime
 from mimetypes import guess_type
 from os import getenv
 from pathlib import Path
@@ -29,6 +30,7 @@ class EmailGenerator:
         message["To"] = self._get_addresses("to")
         message["Cc"] = self._get_addresses("cc")
         message["Bcc"] = self._get_addresses("bcc")
+        message["Date"] = format_datetime(datetime.now())
         message.set_content(self._config["message"].format(year=year, month=month))
         self._add_attachement(message, attachment_filename)
         return message
